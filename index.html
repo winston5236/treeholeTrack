@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>台北樹木追蹤地圖</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 100vh; width: 100%; }
+        .popup-form input, .popup-form textarea { width: 100%; margin-bottom: 5px; }
+        .popup-form button { width: 100%; background: #4CAF50; color: white; border: none; padding: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- 載入 Leaflet 與 Firebase SDK -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // 1. Firebase 帳號設定 (請替換成你自己的設定)
+    const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT_ID.appspot.com",
+        messagingSenderId: "...",
+        appId: "..."
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const treeCol = collection(db, "trees");
+
+    // 2. 初始化地圖 (中心點設在台北市政府)
+    const map = L.map('map').setView([25.0330, 121.5654], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // 3. 點擊地圖時彈出填寫表單
+    map.on('click', function(e) {
+        const { lat, lng } = e.latlng;
+        
+        const formHtml = `
+            <div class="popup-form">
+                <h3>新增樹木資料</h3>
+                <label>座標N: ${lat.toFixed(6)}</label><br>
+                <label>座標E: ${lng.toFixed(6)}</label><br>
+                <input type="text" id="species" placeholder="樹種">
+                <input type="number" id="girth" placeholder="樹圍 (cm)">
+                <input type="number" id="area" placeholder="樹穴面積 (cm²)">
+                <input type="text" id="damage" placeholder="破壞程度">
+                <textarea id="note" placeholder="備註"></textarea>
+                <input type="file" id="photo" accept="image/*">
+                <button id="save-btn">儲存點位</button>
+            </div>
+        `;
+
+        const popup = L.popup()
+            .setLatLng(e.latlng)
+            .setContent(formHtml)
+            .openOn(map);
+
+        // 儲存邏輯
+        document.getElementById('save-btn').onclick = async () => {
+            const treeData = {
+                lat: lat,
+                lng: lng,
+                species: document.getElementById('species').value,
+                girth: document.getElementById('girth').value,
+                area: document.getElementById('area').value,
+                damage: document.getElementById('damage').value,
+                note: document.getElementById('note').value,
+                timestamp: new Date()
+            };
+
+            try {
+                await addDoc(treeCol, treeData);
+                alert("儲存成功！");
+                map.closePopup();
+            } catch (err) {
+                console.error("儲存失敗: ", err);
+            }
+        };
+    });
+
+    // 4. 即時顯示資料庫中的所有點位
+    onSnapshot(treeCol, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                const data = change.doc.data();
+                const marker = L.marker([data.lat, data.lng]).addTo(map);
+                marker.bindPopup(`
+                    <b>樹種:</b> ${data.species}<br>
+                    <b>樹圍:</b> ${data.girth} cm<br>
+                    <b>面積:</b> ${data.area} cm²<br>
+                    <b>破壞:</b> ${data.damage}<br>
+                    <b>備註:</b> ${data.note}
+                `);
+            }
+        });
+    });
+</script>
+</body>
+</html>
