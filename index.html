@@ -2,25 +2,104 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>台北樹木追蹤地圖</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台北精準樹木追蹤系統</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
         #map { height: 100vh; width: 100%; }
-        .popup-form input, .popup-form textarea { width: 100%; margin-bottom: 5px; }
-        .popup-form button { width: 100%; background: #4CAF50; color: white; border: none; padding: 5px; cursor: pointer; }
+
+        /* 左上角新增按鈕樣式 */
+        .add-tree-btn {
+            background: #fff;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+            cursor: pointer;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            border-radius: 5px;
+            border: 2px solid rgba(0,0,0,0.2);
+        }
+        .add-tree-btn:hover { background: #f4f4f4; }
+
+        /* 側邊或浮動表單樣式 */
+        #form-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: none; /* 初始隱藏 */
+        }
+        #form-container h3 { margin-top: 0; color: #333; }
+        .input-group { margin-bottom: 10px; }
+        .input-group label { display: block; font-size: 12px; color: #666; }
+        .input-group input, .input-group textarea { width: 100%; padding: 5px; box-sizing: border-box; }
+        .btn-row { display: flex; gap: 10px; }
+        .save-btn { flex: 2; background: #4CAF50; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; }
+        .cancel-btn { flex: 1; background: #999; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- 載入 Leaflet 與 Firebase SDK -->
+<!-- 新增樹木資料的表單 -->
+<div id="form-container">
+    <h3>新增樹木資料</h3>
+    <div class="input-group">
+        <label>點座標 N (緯度, 如 25.033)</label>
+        <input type="number" id="lat" step="0.000001" placeholder="25.033000">
+    </div>
+    <div class="input-group">
+        <label>點座標 E (經度, 如 121.565)</label>
+        <input type="number" id="lng" step="0.000001" placeholder="121.565400">
+    </div>
+    <div class="input-group">
+        <label>樹種</label>
+        <input type="text" id="species">
+    </div>
+    <div class="input-group">
+        <label>樹圍 (cm)</label>
+        <input type="number" id="girth">
+    </div>
+    <div class="input-group">
+        <label>樹穴面積 (cm²)</label>
+        <input type="number" id="area">
+    </div>
+    <div class="input-group">
+        <label>破壞程度</label>
+        <input type="text" id="damage">
+    </div>
+    <div class="input-group">
+        <label>備註</label>
+        <textarea id="note"></textarea>
+    </div>
+    <div class="input-group">
+        <label>圖片連結 (URL)</label>
+        <input type="text" id="photo_url" placeholder="http://...">
+    </div>
+    <div class="btn-row">
+        <button class="save-btn" id="save-btn">儲存並放置點位</button>
+        <button class="cancel-btn" id="cancel-btn">取消</button>
+    </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // 1. Firebase 帳號設定 (請替換成你自己的設定)
+    // 1. Firebase 設定 (請替換成你的實際設定)
     const firebaseConfig = {
         apiKey: "YOUR_API_KEY",
         authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -34,72 +113,94 @@
     const db = getFirestore(app);
     const treeCol = collection(db, "trees");
 
-    // 2. 初始化地圖 (中心點設在台北市政府)
+    // 2. 初始化地圖
     const map = L.map('map').setView([25.0330, 121.5654], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
+        attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // 3. 點擊地圖時彈出填寫表單
-    map.on('click', function(e) {
-        const { lat, lng } = e.latlng;
-        
-        const formHtml = `
-            <div class="popup-form">
-                <h3>新增樹木資料</h3>
-                <label>座標N: ${lat.toFixed(6)}</label><br>
-                <label>座標E: ${lng.toFixed(6)}</label><br>
-                <input type="text" id="species" placeholder="樹種">
-                <input type="number" id="girth" placeholder="樹圍 (cm)">
-                <input type="number" id="area" placeholder="樹穴面積 (cm²)">
-                <input type="text" id="damage" placeholder="破壞程度">
-                <textarea id="note" placeholder="備註"></textarea>
-                <input type="file" id="photo" accept="image/*">
-                <button id="save-btn">儲存點位</button>
-            </div>
-        `;
-
-        const popup = L.popup()
-            .setLatLng(e.latlng)
-            .setContent(formHtml)
-            .openOn(map);
-
-        // 儲存邏輯
-        document.getElementById('save-btn').onclick = async () => {
-            const treeData = {
-                lat: lat,
-                lng: lng,
-                species: document.getElementById('species').value,
-                girth: document.getElementById('girth').value,
-                area: document.getElementById('area').value,
-                damage: document.getElementById('damage').value,
-                note: document.getElementById('note').value,
-                timestamp: new Date()
+    // 3. 新增自定義「＋」按鈕到地圖左上角
+    const AddTreeControl = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd: function() {
+            const btn = L.DomUtil.create('div', 'add-tree-btn');
+            btn.innerHTML = '＋';
+            btn.title = '新增樹木點位';
+            btn.onclick = () => {
+                document.getElementById('form-container').style.display = 'block';
             };
-
-            try {
-                await addDoc(treeCol, treeData);
-                alert("儲存成功！");
-                map.closePopup();
-            } catch (err) {
-                console.error("儲存失敗: ", err);
-            }
-        };
+            return btn;
+        }
     });
+    map.addControl(new AddTreeControl());
 
-    // 4. 即時顯示資料庫中的所有點位
+    // 4. 表單按鈕邏輯
+    const formContainer = document.getElementById('form-container');
+    
+    document.getElementById('cancel-btn').onclick = () => {
+        formContainer.style.display = 'none';
+        clearForm();
+    };
+
+    document.getElementById('save-btn').onclick = async () => {
+        const lat = parseFloat(document.getElementById('lat').value);
+        const lng = parseFloat(document.getElementById('lng').value);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            alert("請輸入正確的 N/E 座標數值");
+            return;
+        }
+
+        const treeData = {
+            lat: lat,
+            lng: lng,
+            species: document.getElementById('species').value,
+            girth: document.getElementById('girth').value,
+            area: document.getElementById('area').value,
+            damage: document.getElementById('damage').value,
+            note: document.getElementById('note').value,
+            photo: document.getElementById('photo_url').value,
+            timestamp: new Date()
+        };
+
+        try {
+            await addDoc(treeCol, treeData);
+            alert("資料已永久儲存！");
+            formContainer.style.display = 'none';
+            clearForm();
+        } catch (err) {
+            alert("儲存失敗: " + err.message);
+        }
+    };
+
+    function clearForm() {
+        const ids = ['lat', 'lng', 'species', 'girth', 'area', 'damage', 'note', 'photo_url'];
+        ids.forEach(id => document.getElementById(id).value = '');
+    }
+
+    // 5. 即時顯示資料庫所有點位
     onSnapshot(treeCol, (snapshot) => {
+        // 先清除地圖上所有舊 Marker (可選，或透過判斷 added 只新增新的)
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 const data = change.doc.data();
                 const marker = L.marker([data.lat, data.lng]).addTo(map);
-                marker.bindPopup(`
-                    <b>樹種:</b> ${data.species}<br>
-                    <b>樹圍:</b> ${data.girth} cm<br>
-                    <b>面積:</b> ${data.area} cm²<br>
-                    <b>破壞:</b> ${data.damage}<br>
-                    <b>備註:</b> ${data.note}
-                `);
+                
+                let popupContent = `
+                    <div style="min-width: 150px;">
+                        <b>樹種:</b> ${data.species || '未填'}<br>
+                        <b>座標:</b> ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}<br>
+                        <b>樹圍:</b> ${data.girth} cm<br>
+                        <b>面積:</b> ${data.area} cm²<br>
+                        <b>破壞:</b> ${data.damage}<br>
+                        <b>備註:</b> ${data.note}<br>
+                `;
+                if(data.photo) {
+                    popupContent += `<img src="${data.photo}" style="width:100%; margin-top:5px; border-radius:4px;">`;
+                }
+                popupContent += `</div>`;
+                
+                marker.bindPopup(popupContent);
             }
         });
     });
