@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>臺北市路樹狀況追蹤</title>
+    <title>臺北市路樹狀況追蹤 - 魯地圖版</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root { --primary-color: #2E7D32; }
@@ -24,7 +24,7 @@
             background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 8px;
             box-shadow: 0 0 15px rgba(0,0,0,0.2); z-index: 1000; font-size: 13px; line-height: 1.5;
             border-left: 6px solid var(--primary-color);
-            pointer-events: none; /* 防止擋住地圖操作 */
+            pointer-events: auto;
         }
         .info-panel h4 { margin: 0 0 8px 0; color: #333; font-size: 15px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
         .level-item { margin-bottom: 8px; }
@@ -37,7 +37,7 @@
             cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.3); 
         }
 
-        /* 輸入表單彈出視窗 */
+        /* 輸入表單 */
         #form-container {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 320px; background: white; padding: 25px; border-radius: 15px;
@@ -56,11 +56,10 @@
 <body>
 
 <header>
-    <div style="font-size: 22px; font-weight: bold; letter-spacing: 1px;">臺北市路樹狀況追蹤</div>
+    <div style="font-size: 22px; font-weight: bold; letter-spacing: 1px;">臺北市路樹狀況追蹤 (魯地圖)</div>
 </header>
 
 <div id="map">
-    <!-- 左下角說明文字 (對應你的圖片) -->
     <div class="info-panel">
         <h4>破壞程度分級標準</h4>
         <div class="level-item">
@@ -82,16 +81,15 @@
     </div>
 </div>
 
-<!-- 新增點位表單 -->
 <div id="form-container">
     <h3 style="margin:0 0 15px 0; color:var(--primary-color);">新增樹木觀測資料</h3>
     <div class="input-group">
         <label>點座標 N (緯度)</label>
-        <input type="number" id="lat" step="0.000001" placeholder="例如: 25.033000">
+        <input type="number" id="lat" step="0.000001" placeholder="25.033000">
     </div>
     <div class="input-group">
         <label>點座標 E (經度)</label>
-        <input type="number" id="lng" step="0.000001" placeholder="例如: 121.565400">
+        <input type="number" id="lng" step="0.000001" placeholder="121.565400">
     </div>
     <div class="input-group">
         <label>破壞等級 (L1 - L4)</label>
@@ -123,12 +121,12 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // 1. Firebase 設定 (請務必替換為你自己的設定)
+    // 1. Firebase 設定 (請填入你的設定)
     const firebaseConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_PROJECT.firebaseapp.com",
-        projectId: "YOUR_PROJECT",
-        storageBucket: "YOUR_PROJECT.appspot.com",
+        apiKey: "你的真實API_KEY",
+        authDomain: "你的真實DOMAIN.firebaseapp.com",
+        projectId: "你的真實ID",
+        storageBucket: "你的真實BUCKET.appspot.com",
         messagingSenderId: "...",
         appId: "..."
     };
@@ -137,19 +135,20 @@
     const db = getFirestore(app);
     const treeCol = collection(db, "trees");
 
-    // 2. 初始化地圖 (中心設在台北)
+    // 2. 初始化地圖
     const map = L.map('map').setView([25.0450, 121.5300], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
+
+    // 【這裡切換為魯地圖底圖】
+    L.tileLayer('https://tile.happyman.idv.tw/map/rudimap/{z}/{x}/{y}.png', {
+        attribution: '魯地圖 (Rudi Map) | © OpenStreetMap contributors',
+        maxZoom: 19
     }).addTo(map);
 
-    // 3. 顏色分級函數
     function getColor(level) {
         const colors = { '1': "#2ECC71", '2': "#F1C40F", '3': "#E67E22", '4': "#E74C3C" };
         return colors[level] || "#333";
     }
 
-    // 4. 新增按鈕控制項
     const AddBtnControl = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
@@ -161,12 +160,10 @@
     });
     map.addControl(new AddBtnControl());
 
-    // 5. 儲存點位邏輯
     document.getElementById('save-btn').onclick = async () => {
         const lat = parseFloat(document.getElementById('lat').value);
         const lng = parseFloat(document.getElementById('lng').value);
-        
-        if (!lat || !lng) { alert("請填寫座標位置"); return; }
+        if (!lat || !lng) { alert("請填寫座標"); return; }
 
         const treeData = {
             lat, lng,
@@ -181,8 +178,8 @@
 
         try {
             await addDoc(treeCol, treeData);
-            document.getElementById('form-container').style.display = 'none'; // 自動關閉視窗
-            clearForm(); // 清空輸入內容
+            document.getElementById('form-container').style.display = 'none';
+            clearForm();
         } catch (err) {
             alert("儲存失敗: " + err.message);
         }
@@ -198,29 +195,20 @@
         });
     }
 
-    // 6. 即時監聽與永久載入資料
     const q = query(treeCol, orderBy("timestamp", "desc"));
     onSnapshot(q, (snapshot) => {
-        // 清除舊 Marker
         map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
-        
         snapshot.forEach(doc => {
             const d = doc.data();
             const markerColor = getColor(d.level);
-            
             const marker = L.circleMarker([d.lat, d.lng], {
-                radius: 11,
-                fillColor: markerColor,
-                color: "#fff",
-                weight: 2,
-                fillOpacity: 0.9
+                radius: 11, fillColor: markerColor, color: "#fff", weight: 2, fillOpacity: 0.9
             }).addTo(map);
 
             marker.bindPopup(`
                 <div style="font-size:14px; min-width:180px;">
-                    <b style="font-size:16px; color:${markerColor};">等級 L${d.level} - ${d.species || '未知樹種'}</b><hr>
-                    <b>樹圍:</b> ${d.girth} cm<br>
-                    <b>樹穴面積:</b> ${d.area} cm²<br>
+                    <b style="font-size:16px; color:${markerColor};">等級 L${d.level} - ${d.species || '未知'}</b><hr>
+                    <b>樹圍:</b> ${d.girth} cm | <b>面積:</b> ${d.area} cm²<br>
                     <b>備註:</b> ${d.note || '無'}<br>
                     ${d.photo ? `<img src="${d.photo}" style="width:100%; border-radius:5px; margin-top:8px;">` : ''}
                 </div>
