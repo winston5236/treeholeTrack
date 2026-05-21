@@ -3,65 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>台北精準樹木追蹤系統</title>
+    <title>台北樹木追蹤地圖</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: "Microsoft JhengHei", sans-serif; }
         #map { height: 100vh; width: 100%; }
 
-        /* 左上角新增按鈕樣式 */
-        .add-tree-btn {
-            background: #fff;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: bold;
-            color: #4CAF50;
-            cursor: pointer;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-            border-radius: 5px;
-            border: 2px solid rgba(0,0,0,0.2);
+        /* 「＋」按鈕 */
+        .add-btn {
+            background: #2E7D32; width: 50px; height: 50px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px; color: white; cursor: pointer;
+            border-radius: 50%; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            border: none;
         }
-        .add-tree-btn:hover { background: #f4f4f4; }
 
-        /* 側邊或浮動表單樣式 */
+        /* 輸入視窗 (Popup Modal) */
         #form-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 300px;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.2);
-            z-index: 1000;
-            display: none; /* 初始隱藏 */
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 320px; max-height: 80vh; overflow-y: auto;
+            background: white; padding: 25px; border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 2000; display: none;
         }
-        #form-container h3 { margin-top: 0; color: #333; }
-        .input-group { margin-bottom: 10px; }
-        .input-group label { display: block; font-size: 12px; color: #666; }
-        .input-group input, .input-group textarea { width: 100%; padding: 5px; box-sizing: border-box; }
-        .btn-row { display: flex; gap: 10px; }
-        .save-btn { flex: 2; background: #4CAF50; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; }
-        .cancel-btn { flex: 1; background: #999; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px; color: #444; }
+        .input-group input, .input-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        
+        .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+        .save-btn { flex: 2; background: #2E7D32; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; }
+        .cancel-btn { flex: 1; background: #f0f0f0; color: #555; border: none; padding: 12px; cursor: pointer; border-radius: 6px; }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- 新增樹木資料的表單 -->
+<!-- 表單視窗 -->
 <div id="form-container">
-    <h3>新增樹木資料</h3>
+    <h2 style="margin: 0 0 15px 0; color: #2E7D32; font-size: 20px;">新增樹木點位</h2>
     <div class="input-group">
-        <label>點座標 N (緯度, 如 25.033)</label>
+        <label>點座標 N (緯度)</label>
         <input type="number" id="lat" step="0.000001" placeholder="25.033000">
     </div>
     <div class="input-group">
-        <label>點座標 E (經度, 如 121.565)</label>
+        <label>點座標 E (經度)</label>
         <input type="number" id="lng" step="0.000001" placeholder="121.565400">
     </div>
     <div class="input-group">
@@ -82,14 +68,14 @@
     </div>
     <div class="input-group">
         <label>備註</label>
-        <textarea id="note"></textarea>
+        <textarea id="note" rows="3"></textarea>
     </div>
     <div class="input-group">
         <label>圖片連結 (URL)</label>
-        <input type="text" id="photo_url" placeholder="http://...">
+        <input type="text" id="photo_url" placeholder="https://...">
     </div>
     <div class="btn-row">
-        <button class="save-btn" id="save-btn">儲存並放置點位</button>
+        <button class="save-btn" id="save-btn">確認儲存</button>
         <button class="cancel-btn" id="cancel-btn">取消</button>
     </div>
 </div>
@@ -97,14 +83,14 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // 1. Firebase 設定 (請替換成你的實際設定)
+    // 1. Firebase 配置 (請在此貼上你的配置)
     const firebaseConfig = {
         apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-        projectId: "YOUR_PROJECT_ID",
-        storageBucket: "YOUR_PROJECT_ID.appspot.com",
+        authDomain: "YOUR_PROJECT.firebaseapp.com",
+        projectId: "YOUR_PROJECT",
+        storageBucket: "YOUR_PROJECT.appspot.com",
         messagingSenderId: "...",
         appId: "..."
     };
@@ -116,44 +102,41 @@
     // 2. 初始化地圖
     const map = L.map('map').setView([25.0330, 121.5654], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
+        attribution: '© OSM'
     }).addTo(map);
 
-    // 3. 新增自定義「＋」按鈕到地圖左上角
-    const AddTreeControl = L.Control.extend({
+    // 3. 自定義「＋」按鈕控制項
+    const AddBtnControl = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
-            const btn = L.DomUtil.create('div', 'add-tree-btn');
+            const btn = L.DomUtil.create('button', 'add-btn');
             btn.innerHTML = '＋';
-            btn.title = '新增樹木點位';
-            btn.onclick = () => {
-                document.getElementById('form-container').style.display = 'block';
-            };
+            btn.onclick = () => { document.getElementById('form-container').style.display = 'block'; };
             return btn;
         }
     });
-    map.addControl(new AddTreeControl());
+    map.addControl(new AddBtnControl());
 
-    // 4. 表單按鈕邏輯
-    const formContainer = document.getElementById('form-container');
-    
-    document.getElementById('cancel-btn').onclick = () => {
-        formContainer.style.display = 'none';
-        clearForm();
-    };
+    // 4. 關閉視窗邏輯
+    function closeForm() {
+        document.getElementById('form-container').style.display = 'none';
+        // 清空欄位
+        ['lat', 'lng', 'species', 'girth', 'area', 'damage', 'note', 'photo_url'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+    }
 
+    document.getElementById('cancel-btn').onclick = closeForm;
+
+    // 5. 儲存點位並自動關閉
     document.getElementById('save-btn').onclick = async () => {
         const lat = parseFloat(document.getElementById('lat').value);
         const lng = parseFloat(document.getElementById('lng').value);
 
-        if (isNaN(lat) || isNaN(lng)) {
-            alert("請輸入正確的 N/E 座標數值");
-            return;
-        }
+        if (!lat || !lng) { alert("請輸入經緯度"); return; }
 
         const treeData = {
-            lat: lat,
-            lng: lng,
+            lat, lng,
             species: document.getElementById('species').value,
             girth: document.getElementById('girth').value,
             area: document.getElementById('area').value,
@@ -165,43 +148,38 @@
 
         try {
             await addDoc(treeCol, treeData);
-            alert("資料已永久儲存！");
-            formContainer.style.display = 'none';
-            clearForm();
+            console.log("資料已成功存入 Firestore");
+            closeForm(); // <-- 這裡實現自動關閉
         } catch (err) {
-            alert("儲存失敗: " + err.message);
+            alert("儲存失敗，請檢查 Firebase Rules: " + err.message);
         }
     };
 
-    function clearForm() {
-        const ids = ['lat', 'lng', 'species', 'girth', 'area', 'damage', 'note', 'photo_url'];
-        ids.forEach(id => document.getElementById(id).value = '');
-    }
+    // 6. 核心：即時監聽與永久顯示 (解決 Reload 消失的問題)
+    // 使用 onSnapshot 會在頁面載入時抓取現有資料，並在資料庫變動時自動更新
+    const q = query(treeCol, orderBy("timestamp", "desc"));
+    onSnapshot(q, (snapshot) => {
+        // 先清除地圖上已有的 Marker (避免重複渲染)
+        map.eachLayer((layer) => {
+            if (layer instanceof L.Marker) map.removeLayer(layer);
+        });
 
-    // 5. 即時顯示資料庫所有點位
-    onSnapshot(treeCol, (snapshot) => {
-        // 先清除地圖上所有舊 Marker (可選，或透過判斷 added 只新增新的)
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === "added") {
-                const data = change.doc.data();
-                const marker = L.marker([data.lat, data.lng]).addTo(map);
-                
-                let popupContent = `
-                    <div style="min-width: 150px;">
-                        <b>樹種:</b> ${data.species || '未填'}<br>
-                        <b>座標:</b> ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}<br>
-                        <b>樹圍:</b> ${data.girth} cm<br>
-                        <b>面積:</b> ${data.area} cm²<br>
-                        <b>破壞:</b> ${data.damage}<br>
-                        <b>備註:</b> ${data.note}<br>
-                `;
-                if(data.photo) {
-                    popupContent += `<img src="${data.photo}" style="width:100%; margin-top:5px; border-radius:4px;">`;
-                }
-                popupContent += `</div>`;
-                
-                marker.bindPopup(popupContent);
-            }
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const marker = L.marker([data.lat, data.lng]).addTo(map);
+            
+            let content = `
+                <div style="font-size:14px; line-height:1.6;">
+                    <b style="font-size:16px; color:#2E7D32;">${data.species || '未知樹種'}</b><br>
+                    <b>座標:</b> ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}<br>
+                    <b>樹圍:</b> ${data.girth} cm | <b>面積:</b> ${data.area} cm²<br>
+                    <b>破壞:</b> ${data.damage || '無'}<br>
+                    <b>備註:</b> ${data.note || '無'}<br>
+            `;
+            if(data.photo) content += `<img src="${data.photo}" style="width:100%; border-radius:8px; margin-top:8px;">`;
+            content += `</div>`;
+            
+            marker.bindPopup(content);
         });
     });
 </script>
