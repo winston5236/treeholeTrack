@@ -89,3 +89,124 @@
     <div class="input-group"><label>樹種</label><input type="text" id="species"></div>
     <div class="input-group">
         <label>樹圍 (cm) / 樹穴面積 (cm²)</label>
+        <div style="display:flex; gap:5px;">
+            <input type="number" id="girth" placeholder="樹圍">
+            <input type="number" id="area" placeholder="面積">
+        </div>
+    </div>
+    <div class="input-group"><label>備註</label><textarea id="note" rows="2"></textarea></div>
+    <div class="input-group"><label>圖片連結 (URL)</label><input type="text" id="photo_url" placeholder="https://..."></div>
+    <div class="btn-row">
+        <button class="save-btn" id="save-btn">確認儲存</button>
+        <button class="cancel-btn" id="cancel-btn">取消</button>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // 1. Firebase 設定 (請記得貼上你的真實 Config)
+    const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT.firebaseapp.com",
+        projectId: "YOUR_PROJECT",
+        storageBucket: "YOUR_PROJECT.appspot.com",
+        messagingSenderId: "...",
+        appId: "..."
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const treeCol = collection(db, "trees");
+
+    // 2. 初始化地圖
+    const map = L.map('map').setView([25.0450, 121.5300], 14);
+
+    // 定義各種底圖
+    const rudiMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+        attribution: '© 內政部通用電子地圖 (穩定支援 HTTPS)'
+    });
+
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    });
+
+    // 預設載入「通用電子地圖」(最像魯地圖且最穩定)
+    rudiMap.addTo(map);
+
+    // 3. 顏色分級
+    function getColor(level) {
+        const colors = { '1': "#2ECC71", '2': "#F1C40F", '3': "#E67E22", '4': "#E74C3C" };
+        return colors[level] || "#333";
+    }
+
+    // 4. 自定義按鈕
+    const AddBtnControl = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd: function() {
+            const btn = L.DomUtil.create('button', 'add-btn');
+            btn.innerHTML = '＋';
+            btn.onclick = () => { document.getElementById('form-container').style.display = 'block'; };
+            return btn;
+        }
+    });
+    map.addControl(new AddBtnControl());
+
+    // 5. 儲存與清除
+    document.getElementById('save-btn').onclick = async () => {
+        const lat = parseFloat(document.getElementById('lat').value);
+        const lng = parseFloat(document.getElementById('lng').value);
+        if (!lat || !lng) { alert("請填寫座標"); return; }
+
+        const treeData = {
+            lat, lng,
+            level: document.getElementById('damage_level').value,
+            species: document.getElementById('species').value,
+            girth: document.getElementById('girth').value,
+            area: document.getElementById('area').value,
+            note: document.getElementById('note').value,
+            photo: document.getElementById('photo_url').value,
+            timestamp: new Date()
+        };
+
+        try {
+            await addDoc(treeCol, treeData);
+            document.getElementById('form-container').style.display = 'none';
+            clearForm();
+        } catch (err) {
+            alert("儲存失敗，請檢查 Firebase 設定");
+        }
+    };
+
+    document.getElementById('cancel-btn').onclick = () => { document.getElementById('form-container').style.display = 'none'; };
+
+    function clearForm() {
+        ['lat', 'lng', 'species', 'girth', 'area', 'note', 'photo_url'].forEach(id => document.getElementById(id).value = '');
+    }
+
+    // 6. 即時同步點位
+    const q = query(treeCol, orderBy("timestamp", "desc"));
+    onSnapshot(q, (snapshot) => {
+        map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
+        snapshot.forEach(doc => {
+            const d = doc.data();
+            const markerColor = getColor(d.level);
+            const marker = L.circleMarker([d.lat, d.lng], {
+                radius: 11, fillColor: markerColor, color: "#fff", weight: 2, fillOpacity: 0.9
+            }).addTo(map);
+
+            marker.bindPopup(`
+                <div style="font-size:14px; min-width:180px;">
+                    <b style="font-size:16px; color:${markerColor};">等級 L${d.level} - ${d.species || '未知'}</b><hr>
+                    <b>樹圍:</b> ${d.girth} cm | <b>面積:</b> ${d.area} cm²<br>
+                    <b>備註:</b> ${d.note || '無'}<br>
+                    ${d.photo ? `<img src="${d.photo}" style="width:100%; border-radius:5px; margin-top:8px;">` : ''}
+                </div>
+            `);
+        });
+    });
+</script>
+</body>
+</html>
