@@ -4,78 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>臺北市路樹狀況追蹤</title>
+    
+    <!-- 1. 載入 Leaflet 的資源 (穩定 CDN) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         :root { --primary-color: #2E7D32; }
-        body, html { margin: 0; padding: 0; height: 100%; font-family: "Microsoft JhengHei", sans-serif; display: flex; flex-direction: column; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: "Microsoft JhengHei", sans-serif; display: flex; flex-direction: column; overflow: hidden; }
         
+        /* 上方標題 */
         header {
             background: var(--primary-color); color: white;
-            padding: 15px 20px; display: flex; align-items: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 1001;
+            padding: 12px 20px; display: flex; align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3); z-index: 1001;
         }
 
-        #map { flex-grow: 1; width: 100%; position: relative; background: #f0f0f0; }
+        #map { flex-grow: 1; width: 100%; position: relative; background: #e5e5e5; }
 
-        /* 左下角說明視窗 */
+        /* 左下角標準說明視窗 */
         .info-panel {
             position: absolute; bottom: 25px; left: 10px; width: 280px;
-            background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.2); z-index: 1000; font-size: 13px; line-height: 1.5;
+            background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; font-size: 13px; line-height: 1.5;
             border-left: 6px solid var(--primary-color);
         }
         .info-panel h4 { margin: 0 0 8px 0; color: #333; font-size: 15px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-        .level-item { margin-bottom: 8px; }
-        .level-tag { display: inline-block; width: 25px; font-weight: bold; border-radius: 3px; text-align: center; color: white; margin-right: 8px; }
+        .level-item { margin-bottom: 8px; display: flex; align-items: flex-start; }
+        .level-tag { display: inline-block; min-width: 28px; font-weight: bold; border-radius: 4px; text-align: center; color: white; margin-right: 10px; padding: 2px 0; }
 
-        /* 按鈕與表單 */
-        .add-btn { 
-            background: var(--primary-color); width: 50px; height: 50px; 
-            font-size: 30px; color: white; border-radius: 50%; border: none; 
-            cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.3); 
+        /* 新增按鈕 */
+        .leaflet-custom-btn {
+            background: var(--primary-color); width: 50px; height: 50px;
+            font-size: 30px; color: white; border-radius: 50%; border: none;
+            cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            display: flex; align-items: center; justify-content: center;
         }
 
+        /* 輸入表單視窗 */
         #form-container {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 320px; background: white; padding: 25px; border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 2000; display: none;
+            width: 330px; background: white; padding: 25px; border-radius: 15px;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.6); z-index: 3000; display: none;
         }
         .input-group { margin-bottom: 10px; }
-        .input-group label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 3px; }
+        .input-group label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 4px; }
         .input-group input, .input-group select, .input-group textarea { 
-            width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; 
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px;
         }
-        .btn-row { display: flex; gap: 10px; margin-top: 15px; }
-        .save-btn { flex: 2; background: var(--primary-color); color: white; border: none; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; }
-        .cancel-btn { flex: 1; background: #eee; border: none; padding: 12px; cursor: pointer; border-radius: 6px; }
+        .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+        .save-btn { flex: 2; background: var(--primary-color); color: white; border: none; padding: 12px; cursor: pointer; border-radius: 8px; font-weight: bold; }
+        .cancel-btn { flex: 1; background: #eee; border: none; padding: 12px; cursor: pointer; border-radius: 8px; }
     </style>
 </head>
 <body>
 
 <header>
-    <div style="font-size: 22px; font-weight: bold; letter-spacing: 1px;">臺北市路樹狀況追蹤</div>
+    <div style="font-size: 20px; font-weight: bold;">臺北市路樹狀況追蹤</div>
 </header>
 
 <div id="map">
+    <!-- 左下角說明文字 -->
     <div class="info-panel">
         <h4>破壞程度分級標準</h4>
-        <div class="level-item"><span class="level-tag" style="background:#2ECC71">L1</span> <b>輕微：</b>細微裂縫，延伸 < 1/4 路寬。</div>
-        <div class="level-item"><span class="level-tag" style="background:#F1C40F">L2</span> <b>中度：</b>隆起 < 2cm，地磚位移，1/4-1/2 路寬。</div>
-        <div class="level-item"><span class="level-tag" style="background:#E67E22">L3</span> <b>嚴重：</b>隆起 > 2cm，地磚破碎，> 1/2 路寬。</div>
-        <div class="level-item"><span class="level-tag" style="background:#E74C3C">L4</span> <b>極致：</b>圍框斷裂，根系裸露，完全無法通行。</div>
+        <div class="level-item"><span class="level-tag" style="background:#2ECC71">L1</span> <div><b>輕微：</b>細微裂縫，延伸 < 1/4 路寬。</div></div>
+        <div class="level-item"><span class="level-tag" style="background:#F1C40F">L2</span> <div><b>中度：</b>隆起 < 2cm，地磚位移，1/4-1/2 路寬。</div></div>
+        <div class="level-item"><span class="level-tag" style="background:#E67E22">L3</span> <div><b>嚴重：</b>隆起 > 2cm，地磚破碎，> 1/2 路寬。</div></div>
+        <div class="level-item"><span class="level-tag" style="background:#E74C3C">L4</span> <div><b>極致：</b>圍框斷裂，根系裸露，完全無法通行。</div></div>
     </div>
 </div>
 
-<!-- 表單視窗 -->
+<!-- 輸入彈出視窗 -->
 <div id="form-container">
-    <h3 style="margin:0 0 15px 0; color:var(--primary-color);">新增樹木觀測資料</h3>
+    <h3 style="margin:0 0 15px 0; color:var(--primary-color);">新增觀測點位</h3>
     <div class="input-group">
-        <label>點座標 N (緯度)</label>
-        <input type="number" id="lat" step="0.000001" placeholder="例如: 25.033000">
-    </div>
-    <div class="input-group">
-        <label>點座標 E (經度)</label>
-        <input type="number" id="lng" step="0.000001" placeholder="例如: 121.565400">
+        <label>座標 (緯度 N, 經度 E)</label>
+        <div style="display:flex; gap:5px;">
+            <input type="number" id="lat" step="0.000001" placeholder="緯度">
+            <input type="number" id="lng" step="0.000001" placeholder="經度">
+        </div>
     </div>
     <div class="input-group">
         <label>破壞等級</label>
@@ -88,79 +95,80 @@
     </div>
     <div class="input-group"><label>樹種</label><input type="text" id="species"></div>
     <div class="input-group">
-        <label>樹圍 (cm) / 樹穴面積 (cm²)</label>
+        <label>數據 (樹圍 cm / 樹穴面積 cm²)</label>
         <div style="display:flex; gap:5px;">
             <input type="number" id="girth" placeholder="樹圍">
             <input type="number" id="area" placeholder="面積">
         </div>
     </div>
     <div class="input-group"><label>備註</label><textarea id="note" rows="2"></textarea></div>
-    <div class="input-group"><label>圖片連結 (URL)</label><input type="text" id="photo_url" placeholder="https://..."></div>
+    <div class="input-group"><label>圖片網址</label><input type="text" id="photo_url" placeholder="https://..."></div>
     <div class="btn-row">
-        <button class="save-btn" id="save-btn">確認儲存</button>
+        <button class="save-btn" id="save-btn">儲存並送出</button>
         <button class="cancel-btn" id="cancel-btn">取消</button>
     </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
+    // 2. 載入 Firebase (從官方 CDN)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // 1. Firebase 設定 (請記得貼上你的真實 Config)
+    // 【核心重點】請務必填寫你從 Firebase Console 拿到的設定
     const firebaseConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_PROJECT.firebaseapp.com",
-        projectId: "YOUR_PROJECT",
-        storageBucket: "YOUR_PROJECT.appspot.com",
+        apiKey: "請貼上你的API_KEY",
+        authDomain: "你的ID.firebaseapp.com",
+        projectId: "你的ID",
+        storageBucket: "你的ID.appspot.com",
         messagingSenderId: "...",
         appId: "..."
     };
 
+    // 初始化 Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const treeCol = collection(db, "trees");
 
-    // 2. 初始化地圖
-    const map = L.map('map').setView([25.0450, 121.5300], 14);
+    // 3. 初始化地圖 (中心設在台北市政府)
+    const map = L.map('map').setView([25.0330, 121.5654], 15);
 
-    // 定義各種底圖
-    const rudiMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-        attribution: '© 內政部通用電子地圖 (穩定支援 HTTPS)'
-    });
+    // 設定底圖：優先使用「台灣通用電子地圖」(比魯地圖更穩定且支援 HTTPS)
+    const twMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+        attribution: '© 內政部通用電子地圖',
+        maxZoom: 19
+    }).addTo(map);
 
-    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-    });
+    // 備用地圖 (如果上一張失敗，你可以切換到 OSM)
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
 
-    // 預設載入「通用電子地圖」(最像魯地圖且最穩定)
-    rudiMap.addTo(map);
-
-    // 3. 顏色分級
+    // 4. 點位顏色邏輯
     function getColor(level) {
         const colors = { '1': "#2ECC71", '2': "#F1C40F", '3': "#E67E22", '4': "#E74C3C" };
         return colors[level] || "#333";
     }
 
-    // 4. 自定義按鈕
-    const AddBtnControl = L.Control.extend({
+    // 5. 新增按鈕邏輯
+    const AddControl = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
-            const btn = L.DomUtil.create('button', 'add-btn');
+            const btn = L.DomUtil.create('button', 'leaflet-custom-btn');
             btn.innerHTML = '＋';
             btn.onclick = () => { document.getElementById('form-container').style.display = 'block'; };
             return btn;
         }
     });
-    map.addControl(new AddBtnControl());
+    map.addControl(new AddControl());
 
-    // 5. 儲存與清除
+    // 6. 表單控制
+    const form = document.getElementById('form-container');
+    document.getElementById('cancel-btn').onclick = () => form.style.display = 'none';
+
     document.getElementById('save-btn').onclick = async () => {
         const lat = parseFloat(document.getElementById('lat').value);
         const lng = parseFloat(document.getElementById('lng').value);
-        if (!lat || !lng) { alert("請填寫座標"); return; }
+        if (!lat || !lng) return alert("請輸入 N/E 座標！");
 
-        const treeData = {
+        const data = {
             lat, lng,
             level: document.getElementById('damage_level').value,
             species: document.getElementById('species').value,
@@ -172,41 +180,47 @@
         };
 
         try {
-            await addDoc(treeCol, treeData);
-            document.getElementById('form-container').style.display = 'none';
-            clearForm();
-        } catch (err) {
-            alert("儲存失敗，請檢查 Firebase 設定");
+            await addDoc(treeCol, data);
+            form.style.display = 'none';
+            // 清空表單
+            ['lat', 'lng', 'species', 'girth', 'area', 'note', 'photo_url'].forEach(id => document.getElementById(id).value = '');
+        } catch (e) {
+            alert("儲存失敗，請檢查 Firebase Rules！");
         }
     };
 
-    document.getElementById('cancel-btn').onclick = () => { document.getElementById('form-container').style.display = 'none'; };
-
-    function clearForm() {
-        ['lat', 'lng', 'species', 'girth', 'area', 'note', 'photo_url'].forEach(id => document.getElementById(id).value = '');
-    }
-
-    // 6. 即時同步點位
+    // 7. 永久讀取與即時更新點位
     const q = query(treeCol, orderBy("timestamp", "desc"));
     onSnapshot(q, (snapshot) => {
-        map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
+        // 先移除地圖上的圓點，再重繪 (防止重複)
+        map.eachLayer(layer => {
+            if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+        });
+
         snapshot.forEach(doc => {
             const d = doc.data();
-            const markerColor = getColor(d.level);
+            const color = getColor(d.level);
+            
             const marker = L.circleMarker([d.lat, d.lng], {
-                radius: 11, fillColor: markerColor, color: "#fff", weight: 2, fillOpacity: 0.9
+                radius: 12,
+                fillColor: color,
+                color: "#fff",
+                weight: 2,
+                fillOpacity: 0.9
             }).addTo(map);
 
             marker.bindPopup(`
                 <div style="font-size:14px; min-width:180px;">
-                    <b style="font-size:16px; color:${markerColor};">等級 L${d.level} - ${d.species || '未知'}</b><hr>
-                    <b>樹圍:</b> ${d.girth} cm | <b>面積:</b> ${d.area} cm²<br>
+                    <b style="font-size:16px; color:${color};">等級 L${d.level} - ${d.species || '未註明'}</b><hr>
+                    <b>樹圍:</b> ${d.girth} cm<br>
+                    <b>樹穴面積:</b> ${d.area} cm²<br>
                     <b>備註:</b> ${d.note || '無'}<br>
                     ${d.photo ? `<img src="${d.photo}" style="width:100%; border-radius:5px; margin-top:8px;">` : ''}
                 </div>
             `);
         });
     });
+
 </script>
 </body>
 </html>
