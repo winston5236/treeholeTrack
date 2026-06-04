@@ -3,96 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>臺北市路樹追蹤系統 Pro</title>
+    <title>臺北市路樹監測系統 Pro Max</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        :root { --primary: #2E7D32; --secondary: #1976D2; }
+        :root { --primary: #2E7D32; --accent: #FFD54F; }
         body, html { margin: 0; padding: 0; height: 100%; font-family: "Microsoft JhengHei", sans-serif; display: flex; flex-direction: column; }
         
-        header { background: var(--primary); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3); z-index: 1001; }
+        header { background: var(--primary); color: white; padding: 10px 15px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3); z-index: 1001; }
         #map { flex-grow: 1; width: 100%; position: relative; }
 
-        /* 左側控制面板 */
-        .controls { display: flex; gap: 10px; }
-        .mode-btn { background: white; color: var(--primary); border: none; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; }
-        .mode-btn.active { background: #FFD54F; color: #333; }
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+        .mode-btn { background: rgba(255,255,255,0.2); color: white; border: 1px solid white; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; transition: 0.3s; }
+        .mode-btn.active { background: var(--accent); color: #333; border-color: var(--accent); font-weight: bold; }
 
         /* 表單視窗 */
         #form-container {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 340px; background: white; padding: 25px; border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 3000; display: none;
+            width: 320px; background: white; padding: 20px; border-radius: 15px;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.5); z-index: 3000; display: none;
         }
         .input-group { margin-bottom: 10px; }
         .input-group label { display: block; font-size: 12px; font-weight: bold; color: #555; }
         .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        
         .btn-row { display: flex; gap: 10px; margin-top: 15px; }
         .save-btn { flex: 2; background: var(--primary); color: white; border: none; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; }
         .cancel-btn { flex: 1; background: #eee; border: none; padding: 12px; cursor: pointer; border-radius: 6px; }
 
-        /* 浮動說明視窗 */
-        .info-panel { position: absolute; bottom: 25px; left: 10px; width: 250px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); z-index: 1000; font-size: 12px; }
-        
-        /* 比例狀態標籤 */
+        /* 圖片模式下的 Marker 樣式 */
+        .image-marker {
+            border: 3px solid white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            background-size: cover;
+            background-position: center;
+            background-color: #ddd;
+        }
+
+        .info-panel { position: absolute; bottom: 20px; left: 10px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.2); z-index: 1000; font-size: 12px; pointer-events: none; }
         .status-good { color: #2E7D32; font-weight: bold; }
         .status-bad { color: #D32F2F; font-weight: bold; }
-
-        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); color: white; display: none; align-items: center; justify-content: center; z-index: 4000; }
+        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); color: white; display: none; align-items: center; justify-content: center; z-index: 4000; }
     </style>
 </head>
 <body>
 
 <header>
-    <div style="font-size: 18px; font-weight: bold;">路樹監測 Pro</div>
+    <div style="font-weight: bold;">路樹監測系統</div>
     <div class="controls">
-        <button id="toggle-damage" class="mode-btn active">依破壞等級顯示</button>
-        <button id="toggle-species" class="mode-btn">依樹種顯示</button>
+        <button id="btn-damage" class="mode-btn active">分級模式</button>
+        <button id="btn-species" class="mode-btn">樹種模式</button>
+        <button id="btn-image" class="mode-btn">📸 圖片巡檢</button>
     </div>
 </header>
 
 <div id="map">
-    <div class="info-panel" id="legend">
-        <b>當前顯示：破壞等級</b><br>
-        L1(綠) L2(黃) L3(橘) L4(紅)
-    </div>
+    <div class="info-panel" id="legend">當前模式：分級顯示</div>
 </div>
 
-<div id="loading" class="loading-overlay">圖片上傳中，請稍候...</div>
+<div id="loading" class="loading-overlay">處理中...</div>
 
-<!-- 新增/編輯表單 -->
 <div id="form-container">
-    <h3 id="form-title">新增樹木觀測</h3>
+    <h3 id="form-title" style="margin-top:0">樹木觀測</h3>
     <input type="hidden" id="edit-id">
     <div class="input-group">
-        <label>座標 (N / E)</label>
-        <div style="display:flex; gap:5px;">
-            <input type="number" id="lat" step="0.000001">
-            <input type="number" id="lng" step="0.000001">
-        </div>
+        <label>座標 (N/E)</label>
+        <div style="display:flex; gap:5px;"><input type="number" id="lat" step="0.000001"><input type="number" id="lng" step="0.000001"></div>
     </div>
     <div class="input-group">
-        <label>破壞等級 (1-4)</label>
-        <select id="damage_level">
-            <option value="1">L1</option><option value="2">L2</option><option value="3">L3</option><option value="4">L4</option>
-        </select>
+        <label>破壞等級</label>
+        <select id="damage_level"><option value="1">L1</option><option value="2">L2</option><option value="3">L3</option><option value="4">L4</option></select>
     </div>
     <div class="input-group"><label>樹種</label><input type="text" id="species"></div>
     <div class="input-group">
         <label>樹圍 (cm) / 樹穴面積 (cm²)</label>
-        <div style="display:flex; gap:5px;">
-            <input type="number" id="girth" placeholder="樹圍">
-            <input type="number" id="area" placeholder="面積">
-        </div>
+        <div style="display:flex; gap:5px;"><input type="number" id="girth" placeholder="樹圍"><input type="number" id="area" placeholder="面積"></div>
     </div>
-    <div class="input-group"><label>詳細備註</label><textarea id="note" rows="2"></textarea></div>
-    <div class="input-group">
-        <label>現場圖片上傳</label>
-        <input type="file" id="image-file" accept="image/*">
-        <input type="hidden" id="existing-img-url">
-    </div>
+    <div class="input-group"><label>備註</label><textarea id="note" rows="2"></textarea></div>
+    <div class="input-group"><label>更換圖片</label><input type="file" id="image-file" accept="image/*"><input type="hidden" id="existing-img-url"></div>
     <div class="btn-row">
-        <button class="save-btn" id="save-btn">儲存資料</button>
+        <button class="save-btn" id="save-btn">儲存</button>
         <button class="cancel-btn" id="cancel-btn">取消</button>
     </div>
 </div>
@@ -103,7 +92,7 @@
     import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-    // 1. Firebase 設定
+    // 1. Firebase 設定 (請填入你的)
     const firebaseConfig = {
         apiKey: "YOUR_API_KEY",
         authDomain: "YOUR_PROJECT.firebaseapp.com",
@@ -122,10 +111,10 @@
     const map = L.map('map').setView([25.0450, 121.5300], 15);
     L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}').addTo(map);
 
-    let viewMode = 'damage'; // 'damage' 或 'species'
-    const speciesColors = {}; // 存放樹種對應顏色
+    let viewMode = 'damage'; 
+    const speciesColors = {};
 
-    // 3. 顏色逻辑
+    // 3. 輔助函數
     function stringToColor(str) {
         if (!speciesColors[str]) {
             const hash = [...str].reduce((acc, char) => char.charCodeAt(0) + ((acc << 5) - acc), 0);
@@ -134,34 +123,19 @@
         return speciesColors[str];
     }
 
-    function getTreeColor(d) {
-        if (viewMode === 'damage') {
-            const colors = { '1': "#2ECC71", '2': "#F1C40F", '3': "#E67E22", '4': "#E74C3C" };
-            return colors[d.level] || "#333";
-        } else {
-            return stringToColor(d.species || "未知");
-        }
-    }
-
-    // 4. 計算比例邏輯 (面積/樹圍)
-    // 假設標準：面積(cm2) / 樹圍(cm) > 100 為良 (Good)，反之為差 (Bad)
     function calculateRatio(girth, area) {
-        if (!girth || !area) return { val: 0, text: '無數據', class: '' };
+        if (!girth || !area) return { text: '無數據', class: '' };
         const ratio = (area / girth).toFixed(1);
         const isGood = ratio > 100;
-        return {
-            val: ratio,
-            text: isGood ? `良 (比例:${ratio})` : `空間不足 (比例:${ratio})`,
-            class: isGood ? 'status-good' : 'status-bad'
-        };
+        return { text: isGood ? `良 (${ratio})` : `空間不足 (${ratio})`, class: isGood ? 'status-good' : 'status-bad' };
     }
 
-    // 5. 新增按鈕
+    // 4. 新增按鈕
     const AddBtn = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
             const btn = L.DomUtil.create('button', 'mode-btn');
-            btn.style.width = '44px'; btn.style.height = '44px'; btn.style.fontSize = '24px';
+            btn.style = 'width:44px; height:44px; font-size:24px; background:var(--primary); color:white;';
             btn.innerHTML = '＋';
             btn.onclick = () => openForm();
             return btn;
@@ -169,11 +143,19 @@
     });
     map.addControl(new AddBtn());
 
-    // 6. 表單控制 (新增與編輯)
+    // 5. 表單邏輯
+    window.editTree = (id, dataJson) => {
+        const data = JSON.parse(decodeURIComponent(dataJson));
+        openForm(data, id);
+    };
+
+    window.deleteTree = async (id) => {
+        if (confirm("確定刪除？")) await deleteDoc(doc(db, "trees", id));
+    };
+
     function openForm(data = null, id = null) {
         document.getElementById('form-container').style.display = 'block';
         if (data) {
-            document.getElementById('form-title').innerText = "編輯觀測資料";
             document.getElementById('edit-id').value = id;
             document.getElementById('lat').value = data.lat;
             document.getElementById('lng').value = data.lng;
@@ -184,25 +166,19 @@
             document.getElementById('note').value = data.note;
             document.getElementById('existing-img-url').value = data.photo || "";
         } else {
-            document.getElementById('form-title').innerText = "新增樹木觀測";
             document.getElementById('edit-id').value = "";
             ['lat', 'lng', 'species', 'girth', 'area', 'note', 'existing-img-url'].forEach(i => document.getElementById(i).value = "");
         }
     }
 
-    document.getElementById('cancel-btn').onclick = () => document.getElementById('form-container').style.display = 'none';
-
-    // 7. 儲存邏輯 (包含圖片上傳)
     document.getElementById('save-btn').onclick = async () => {
         const id = document.getElementById('edit-id').value;
         const file = document.getElementById('image-file').files[0];
         let photoUrl = document.getElementById('existing-img-url').value;
 
         document.getElementById('loading').style.display = 'flex';
-
-        // 如果有選新檔案，先上傳到 Storage
         if (file) {
-            const fileRef = ref(storage, `tree_imgs/${Date.now()}_${file.name}`);
+            const fileRef = ref(storage, `trees/${Date.now()}_${file.name}`);
             await uploadBytes(fileRef, file);
             photoUrl = await getDownloadURL(fileRef);
         }
@@ -212,84 +188,89 @@
             lng: parseFloat(document.getElementById('lng').value),
             level: document.getElementById('damage_level').value,
             species: document.getElementById('species').value,
-            girth: parseFloat(document.getElementById('girth').value),
-            area: parseFloat(document.getElementById('area').value),
+            girth: parseFloat(document.getElementById('girth').value) || 0,
+            area: parseFloat(document.getElementById('area').value) || 0,
             note: document.getElementById('note').value,
             photo: photoUrl,
             timestamp: new Date()
         };
 
-        if (id) {
-            await updateDoc(doc(db, "trees", id), data);
-        } else {
-            await addDoc(treeCol, data);
-        }
+        if (id) await updateDoc(doc(db, "trees", id), data);
+        else await addDoc(treeCol, data);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('form-container').style.display = 'none';
-        document.getElementById('image-file').value = "";
     };
 
-    // 8. 全域刪除函數 (掛載到 window)
-    window.deleteTree = async (id) => {
-        if (confirm("確定要永久刪除此點位嗎？")) {
-            await deleteDoc(doc(db, "trees", id));
-        }
-    };
+    document.getElementById('cancel-btn').onclick = () => document.getElementById('form-container').style.display = 'none';
 
-    window.editTree = (id, dataJson) => {
-        const data = JSON.parse(decodeURIComponent(dataJson));
-        openForm(data, id);
-    };
-
-    // 9. 切換模式按鈕
-    document.getElementById('toggle-damage').onclick = function() {
-        viewMode = 'damage';
-        this.classList.add('active');
-        document.getElementById('toggle-species').classList.remove('active');
-        document.getElementById('legend').innerHTML = "<b>當前顯示：破壞等級</b><br>L1(綠) L2(黃) L3(橘) L4(紅)";
-        refreshMarkers();
-    };
-
-    document.getElementById('toggle-species').onclick = function() {
-        viewMode = 'species';
-        this.classList.add('active');
-        document.getElementById('toggle-damage').classList.remove('active');
-        document.getElementById('legend').innerHTML = "<b>當前顯示：樹種分類</b><br>不同顏色代表不同樹種";
-        refreshMarkers();
-    };
-
-    // 10. 渲染與即時監聽
-    let allData = [];
-    onSnapshot(query(treeCol, orderBy("timestamp", "desc")), (snapshot) => {
-        allData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        refreshMarkers();
+    // 6. 切換模式邏輯
+    const btns = { 'damage': 'btn-damage', 'species': 'btn-species', 'image': 'btn-image' };
+    Object.keys(btns).forEach(mode => {
+        document.getElementById(btns[mode]).onclick = function() {
+            viewMode = mode;
+            Object.values(btns).forEach(b => document.getElementById(b).classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById('legend').innerText = `當前模式：${this.innerText}`;
+            renderMarkers();
+        };
     });
 
-    function refreshMarkers() {
-        map.eachLayer(l => { if (l instanceof L.CircleMarker) map.removeLayer(l); });
-        
-        allData.forEach(d => {
-            const ratioInfo = calculateRatio(d.girth, d.area);
-            const marker = L.circleMarker([d.lat, d.lng], {
-                radius: 12, fillColor: getTreeColor(d), color: "#fff", weight: 3, fillOpacity: 0.9
-            }).addTo(map);
+    // 7. 即時數據監聽
+    let treeData = [];
+    onSnapshot(query(treeCol, orderBy("timestamp", "desc")), (snap) => {
+        treeData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderMarkers();
+    });
 
+    // 8. 核心：渲染點位與 Hover 效果
+    function renderMarkers() {
+        map.eachLayer(l => { if (l instanceof L.CircleMarker || l instanceof L.Marker) map.removeLayer(l); });
+
+        treeData.forEach(d => {
+            let marker;
+            const ratioInfo = calculateRatio(d.girth, d.area);
             const dataStr = encodeURIComponent(JSON.stringify(d));
-            
-            marker.bindPopup(`
-                <div style="font-size:14px; min-width:200px;">
-                    <b style="font-size:16px;">${d.species || '未知'} (L${d.level})</b><br>
-                    <span class="${ratioInfo.class}">生長空間：${ratioInfo.text}</span><hr>
-                    <b>樹圍:</b> ${d.girth}cm | <b>面積:</b> ${d.area}cm²<br>
-                    <b>備註:</b> ${d.note}<br>
-                    ${d.photo ? `<img src="${d.photo}" style="width:100%; border-radius:5px; margin:8px 0;">` : ''}
-                    <div style="display:flex; gap:5px; margin-top:10px;">
-                        <button onclick="editTree('${d.id}', '${dataStr}')" style="flex:1; padding:5px; cursor:pointer;">編輯</button>
-                        <button onclick="deleteTree('${d.id}')" style="flex:1; padding:5px; background:#ff4444; color:white; border:none; cursor:pointer;">刪除</button>
+
+            // 根據模式決定 Marker 外觀
+            if (viewMode === 'image' && d.photo) {
+                const imgIcon = L.divIcon({
+                    className: 'image-marker',
+                    html: `<div style="width:40px; height:40px; background-image:url(${d.photo}); background-size:cover; border-radius:5px;"></div>`,
+                    iconSize: [40, 40]
+                });
+                marker = L.marker([d.lat, d.lng], { icon: imgIcon }).addTo(map);
+            } else {
+                const color = (viewMode === 'species') ? stringToColor(d.species) : 
+                              ({ '1':"#2ECC71", '2':"#F1C40F", '3':"#E67E22", '4':"#E74C3C" }[d.level]);
+                marker = L.circleMarker([d.lat, d.lng], {
+                    radius: 12, fillColor: color, color: "#fff", weight: 2, fillOpacity: 0.9
+                }).addTo(map);
+            }
+
+            // 彈窗內容
+            const popupHtml = `
+                <div style="width:200px">
+                    <b>${d.species} (L${d.level})</b><br>
+                    <span class="${ratioInfo.class}">空間：${ratioInfo.text}</span><hr>
+                    ${viewMode === 'image' ? '' : (d.photo ? `<img src="${d.photo}" style="width:100%; border-radius:5px; margin-bottom:5px;">` : '')}
+                    <div style="font-size:12px; color:#666;">${d.note || ''}</div>
+                    <div style="margin-top:8px; display:flex; gap:5px;">
+                        <button onclick="editTree('${d.id}', '${dataStr}')" style="flex:1">編輯</button>
+                        <button onclick="deleteTree('${d.id}')" style="flex:1; background:#fee; border:1px solid #fcc; color:red;">刪除</button>
                     </div>
                 </div>
-            `);
+            `;
+
+            marker.bindPopup(popupHtml);
+
+            // 懸停觸發彈窗 (Hover logic)
+            marker.on('mouseover', function(e) {
+                this.openPopup();
+            });
+
+            // 如果要在滑鼠移開時自動關閉，取消下面這行註釋
+            // marker.on('mouseout', function(e) { this.closePopup(); });
         });
     }
 </script>
